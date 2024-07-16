@@ -187,9 +187,11 @@ RSI.boot.bin30_intersect.RSI.values <- lapply(list(hBECs = hBECs.bin30_mean.RSI.
 
 # plot RSI, PSI (RSIboot) and FDR
 
-RSI.RSIboot.FDR.gg <- rbind(cbind(cell = "hBECs", hBECs.bin30_mean.RSI.boot$infected),
+RSI.RSIboot.FDR.tb <- rbind(cbind(cell = "hBECs", hBECs.bin30_mean.RSI.boot$infected),
                             cbind(cell = "colon", colon.bin30_mean.RSI.boot$infected),
-                            cbind(cell = "ileum", ileum.bin30_mean.RSI.boot$infected)) %>%
+                            cbind(cell = "ileum", ileum.bin30_mean.RSI.boot$infected))
+
+RSI.RSIboot.FDR.gg <- RSI.RSIboot.FDR.tb %>%
   ggplot(aes(x = RSI, y = RSI.boot)) +
   facet_wrap(~cell %>% factor(levels = c("hBECs", "colon", "ileum"))) +
   geom_point(aes(color = ifelse(p.adjust.survival < .05, "a", "b")), size = 1) +
@@ -365,10 +367,12 @@ hurst.rank.all.gg <- rbind(hBECs.hurst.rank %>% filter(data == "infected") %>% c
 
 # pairwise gene comparison, infected vs simulated
 
-hurst.infected.vs.simulated.gg <- rbind(hBECs.hurst.rank %>% cbind(cell = "hBECs"),
+hurst.infected.vs.simulated.tb <- rbind(hBECs.hurst.rank %>% cbind(cell = "hBECs"),
                                         colon.hurst.rank %>% cbind(cell = "colon"),
                                         ileum.hurst.rank %>% cbind(cell = "ileum")) %>% filter(data %in% c("infected", "simulated")) %>%
-  dplyr::select(-c(Hal, Ht, Hrs, Hs, `RSIboot FDR`)) %>% pivot_wider(names_from = data, values_from = He) %>%
+  dplyr::select(-c(Hal, Ht, Hrs, Hs, `RSIboot FDR`)) %>% pivot_wider(names_from = data, values_from = He)
+
+hurst.infected.vs.simulated.gg <- hurst.infected.vs.simulated.tb %>%
   ggplot(aes(x = infected, y = simulated)) + geom_point(size = 1) + facet_wrap(~factor(cell, level = c("hBECs", "colon", "ileum"))) +
   ylim(.25, 1) + xlim(.25, 1) +
   geom_density_2d(linewidth = .25) +
@@ -528,3 +532,160 @@ struc.c.d <- ggarrange(grid.arrange(tableGrob(hBECs.rank.small[c(1, 2, 5)], them
 struc.gg <- ggarrange(struc.a, struc.b, struc.c.d, ncol = 1, heights = c(1, 2, 1))
 
 ggsave("figs_out/final/data_structure.pdf", height = 8, width = 6.85)
+
+# network analyses
+
+#huri_egdes <- read.table("HuRI.tsv")
+#huri_egdes.symbol <- apply(huri_egdes, 2, function(x) {
+#  AnnotationDbi::select(org.Hs.eg.db, keys = x, columns = "SYMBOL", keytype = "ENSEMBL", multiVals = "first")$SYMBOL
+#})
+load("RData/HuRi_gene_names.Rdata")
+
+# test correlation of PSI and H with k and b
+
+huri.k <- degree(huri)
+huri.b <- betweenness(huri, directed = FALSE)
+
+k.or.b(list(RSI.boot.intersect = RSI.boot.bin30_intersect,
+            hurst.intersect = hurst.significant.genes.intersect$gene %>% unique()),
+       huri)
+
+RSI.RSIboot.FDR.tb$k <- huri.k[match(rownames(RSI.RSIboot.FDR.tb), names(huri.k))]
+RSI.RSIboot.FDR.tb$b <- huri.b[match(rownames(RSI.RSIboot.FDR.tb), names(huri.b))]
+
+RSIboot.significant.k.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
+  lm(RSI.boot ~ k, RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5 & cell == x))
+})
+
+RSIboot.significant.b.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
+  lm(RSI.boot ~ b, RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5 & cell == x))
+})
+
+RSIboot.cor.k.gg <- RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5) %>%
+  ggplot(aes(RSI.boot, k, color = cell)) + geom_point() + geom_smooth(method = "lm")
+
+RSIboot.cor.b.gg <- RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5) %>%
+  ggplot(aes(RSI.boot, b, color = cell)) + geom_point() + geom_smooth(method = "lm")
+
+hurst.infected.vs.simulated.tb$k <- huri.k[match(hurst.infected.vs.simulated.tb$gene, names(huri.k))]
+hurst.infected.vs.simulated.tb$b <- huri.b[match(hurst.infected.vs.simulated.tb$gene, names(huri.b))]
+
+hurst.significant.k.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
+  lm(infected ~ k, hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7 & cell == x))
+})
+
+hurst.significant.b.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
+  lm(infected ~ b, hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7 & cell == x))
+})
+
+hurst.cor.k.gg <- hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7) %>%
+  ggplot(aes(infected, k, color = cell)) + geom_point() + geom_smooth(method = "lm")
+
+hurst.cor.b.gg <- hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7) %>%
+  ggplot(aes(infected, b, color = cell)) + geom_point() + geom_smooth(method = "lm")
+
+# by GO category
+
+k.or.b_RSI.boot.bin30_intersect.GO <- apply(RSI.boot.bin30_intersect.GO, 1, function(x) {
+  
+  genes <- list()
+  genes[[x["Description"]]] <- x["geneID"] %>% strsplit("/") %>% unlist()
+
+  GO.res <- AnnotationDbi::select(org.Hs.eg.db, keys = c(x["ID"]), columns = c('SYMBOL'), keytype = "GOALL")
+  GO.genes <- unique(GO.res$SYMBOL)
+  
+  ALL.k.or.b <- k.or.b(genes, huri)
+  GO.k.or.b <- k.or.b(genes, huri, GO.genes)
+  
+  return(list(full = ALL.k.or.b,
+              GO = GO.k.or.b) %>%
+           bind_rows(.id = "background"))
+}) %>% bind_rows(.id = "GO")
+
+k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO", "k.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO",]$k.p.value)
+k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full", "k.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full",]$k.p.value)
+
+k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO", "b.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO",]$b.p.value)
+k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full", "b.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full",]$b.p.value)
+
+k.or.b_hurst.significant.genes.intersect.GO <- apply(hurst.significant.genes.intersect.GO, 1, function(x) {
+  
+  genes <- list()
+  genes[[x["Description"]]] <- x["geneID"] %>% strsplit("/") %>% unlist()
+  
+  GO.res <- AnnotationDbi::select(org.Hs.eg.db, keys = c(x["ID"]), columns = c('SYMBOL'), keytype = "GOALL")
+  GO.genes <- unique(GO.res$SYMBOL)
+  
+  ALL.k.or.b <- k.or.b(genes, huri)
+  GO.k.or.b <- k.or.b(genes, huri, GO.genes)
+  
+  return(list(full = ALL.k.or.b,
+              GO = GO.k.or.b) %>%
+           bind_rows(.id = "background"))
+}) %>% bind_rows(.id = "GO")
+
+k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO", "k.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO",]$k.p.value)
+k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full", "k.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full",]$k.p.value)
+
+k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO", "b.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO",]$b.p.value)
+k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full", "b.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full",]$b.p.value)
+
+# hubs based on 1.5xIQR rule and bottlenecks = articulation points
+
+huri.k.1.5_iqr <- IQR(huri.k) * 1.5
+huri.k.1.5_iqr.hubs <- huri.k[huri.k > huri.k.1.5_iqr]
+
+hurst.significant.genes.intersect.genes <- hurst.significant.genes.intersect$gene %>% unique()
+
+RSI.boot.bin30_intersect.hubs <- huri.k.1.5_iqr.hubs[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.k.1.5_iqr.hubs)]]
+hurst.significant.genes.intersect.hubs <- huri.k.1.5_iqr.hubs[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.k.1.5_iqr.hubs)]]
+
+huri.articulation_points <- articulation_points(huri) %>% as.list() %>% unlist()
+
+RSI.boot.bin30_intersect.ap <- huri.articulation_points[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.articulation_points)]]
+hurst.significant.genes.intersect.ap <- huri.articulation_points[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.articulation_points)]]
+
+huri.b.1.5_iqr <- IQR(huri.b) * 1.5
+huri.b.1.5_iqr.bns <- huri.b[huri.b > huri.b.1.5_iqr]
+
+RSI.boot.bin30_intersect.bns <- huri.b.1.5_iqr.bns[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.b.1.5_iqr.bns)]]
+hurst.significant.genes.intersect.bns <- huri.b.1.5_iqr.bns[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.b.1.5_iqr.bns)]]
+
+# genes not detected previously in the used datasets
+
+hurst.RSI.intersect.significant <- c(hurst.significant.genes.intersect.genes, RSI.boot.bin30_intersect) %>% unique()
+
+hBECs.ori <- read_xlsx("prev_res/journal.pbio.3001143.s006.xlsx")
+hBECs.ori.DE <- hBECs.ori %>% dplyr::filter(pval_corrected < .05)
+hBECs.ori.not_DE <- hBECs.ori %>% dplyr::filter(pval_corrected >= .05)
+
+intersect_genes_not_in_hBECs.ori <- hBECs.ori.not_DE[hBECs.ori.not_DE$Gene %in% hurst.RSI.intersect.significant,]$Gene %>% unique() %>% sort()
+
+load("prev_res/COVID19_July.rda")
+
+# do tests 24h vs mock and 24h vs bystander with MAST
+
+Idents(Colon_H_T) <- Colon_H_T$Groups
+Colon_H_T.DE.ALL <- FindMarkers(Colon_H_T, ident.1 = "24h_Infected", ident.2 = "Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+
+Colon_H_T$CellTypes.Groups <- paste0(Colon_H_T$CellTypes, "_", Colon_H_T$Groups)
+Idents(Colon_H_T) <- Colon_H_T$CellTypes.Groups
+Colon_H_T.DE.IE2 <- FindMarkers(Colon_H_T, ident.1 = "Inmature Enterocyte 2_24h_Infected", ident.2 = "Inmature Enterocyte 2_Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+Colon_H_T.DE.IE2.bystander <- FindMarkers(Colon_H_T, ident.1 = "Inmature Enterocyte 2_24h_Bystander", ident.2 = "Inmature Enterocyte 2_Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+Colon_H_T.DE.IE2.vs_bystander <- FindMarkers(Colon_H_T, ident.1 = "Inmature Enterocyte 2_24h_Infected", ident.2 = "Inmature Enterocyte 2_24h_Bystander", test.use = "MAST", assay = "RNA")
+
+Idents(Illeum_H_T) <- Illeum_H_T$Groups
+Illeum_H_T.DE.ALL <- FindMarkers(Illeum_H_T, ident.1 = "24h_Infected", ident.2 = "Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+
+Illeum_H_T$CellTypes.Groups <- paste0(Illeum_H_T$CellTypes, "_", Illeum_H_T$Groups)
+Idents(Illeum_H_T) <- Illeum_H_T$CellTypes.Groups
+Illeum_H_T.DE.IE2 <- FindMarkers(Illeum_H_T, ident.1 = "Inmature Enterocyte 2_24h_Infected", ident.2 = "Inmature Enterocyte 2_Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+Illeum_H_T.DE.IE2.bystander <- FindMarkers(Illeum_H_T, ident.1 = "Inmature Enterocyte 2_24h_Bystander", ident.2 = "Inmature Enterocyte 2_Mock_Non-Infected", test.use = "MAST", assay = "RNA")
+Illeum_H_T.DE.IE2.vs_bystander <- FindMarkers(Illeum_H_T, ident.1 = "Inmature Enterocyte 2_24h_Infected", ident.2 = "Inmature Enterocyte 2_24h_Bystander", test.use = "MAST", assay = "RNA")
+
+ALL.hIECs.DE <- c(rownames(Colon_H_T.DE.ALL), rownames(Colon_H_T.DE.IE2), rownames(Colon_H_T.DE.IE2.bystander), rownames(Colon_H_T.DE.IE2.vs_bystander),
+                  rownames(Illeum_H_T.DE.ALL), rownames(Illeum_H_T.DE.IE2), rownames(Illeum_H_T.DE.IE2.bystander), rownames(Illeum_H_T.DE.IE2.vs_bystander)) %>% unique()
+
+intersect_genes_not_in_hIECs.ori <- hurst.RSI.intersect.significant[!hurst.RSI.intersect.significant %in% ALL.hIECs.DE]
+
+significant.genes.this.study <- intersect_genes_not_in_hBECs.ori[intersect_genes_not_in_hBECs.ori %in% intersect_genes_not_in_hIECs.ori]

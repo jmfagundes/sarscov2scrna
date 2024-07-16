@@ -14,6 +14,7 @@ library(ggrepel)
 library(pracma)
 library(grid)
 library(gridExtra)
+library(igraph)
 
 # packages that are not used in the final analysis, but some functions may use them for other types of data or analysis
 #library(minpack.lm)
@@ -950,6 +951,54 @@ fit.hurst_bin <- function(matrices,
     hurst.fit[[gene]] <- H.lst
   }
   return(hurst.fit)
+}
+
+#' k.or.b
+#' 
+#' Test whether lists are enriched with bottleneck or hub genes
+#' 
+#' @param gene.lst Named list of gene lists
+#' @param interactome.net A network
+#' @param universe Background genes
+#' 
+#' @return A table with the results
+k.or.b <- function(gene.lst,
+                   interactome.net,
+                   universe = NULL) {
+  
+  if (!is.null(universe)) {
+    
+    universe <- universe[universe %in% V(interactome.net)$name]
+    if (length(universe) == 0) return()
+    interactome.k <- degree(interactome.net, v = universe)
+    interactome.b <- betweenness(interactome.net, v = universe, directed = FALSE)
+    
+  } else {
+    
+    interactome.k <- degree(interactome.net)
+    interactome.b <- betweenness(interactome.net, directed = FALSE)
+  }
+  
+  res.tb <- lapply(gene.lst, function(x) {
+    
+    x <- x[x %in% V(interactome.net)$name]
+    
+    if (length(x) == 0) return()
+    
+    genes.k <- degree(interactome.net, v = x)
+    genes.b <- betweenness(interactome.net, v = x, directed = FALSE)
+    
+    k.test <- wilcox.test(genes.k, interactome.k, alternative = "greater")$p.value
+    b.test <- wilcox.test(genes.b, interactome.b, alternative = "greater")$p.value
+    
+    list(mean.k = mean(genes.k), median.k = median(genes.k), k.p.value = k.test,
+         mean.b = mean(genes.b), median.b = median(genes.b), b.p.value = b.test)
+  }) %>% bind_rows(.id = "list")
+  
+  res.tb$k.adj.p <- p.adjust(res.tb$k.p.value)
+  res.tb$b.adj.p<- p.adjust(res.tb$b.p.value)
+  
+  return(res.tb)
 }
 
 # Langevin and Fokker-Planck model equation functions
