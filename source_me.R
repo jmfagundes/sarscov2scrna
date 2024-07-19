@@ -39,6 +39,10 @@ hBECs.n.bins <- 30
 colon.n.bins <- 30
 ileum.n.bins <- 30
 
+# create folder to place previously results
+
+dir.create("prev_res")
+
 # functions
 
 # return gene abundances

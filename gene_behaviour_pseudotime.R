@@ -46,16 +46,6 @@ hBECs.bin30_mean.RSI <- calc.RSI(hBECs.bin30_mean.rank)
 colon.bin30_mean.RSI <- calc.RSI(colon.bin30_mean.rank)
 ileum.bin30_mean.RSI <- calc.RSI(ileum.bin30_mean.rank)
 
-# TEMP export some genes
-
-temp.hBECs <- rbind(hBECs.bin30_mean_sd.mtx$mean, hBECs.bin30_mean_sd.mtx$sd ** 2)
-temp.hBECs <- temp.hBECs[rep(1:nrow(hBECs.bin30_mean_sd.mtx$mean), each = 2) + (0:1) * nrow(hBECs.bin30_mean_sd.mtx$mean),]
-rownames(temp.hBECs)[seq(1, nrow(temp.hBECs), 2)] <- gsub("$", "_mean", rownames(temp.hBECs)[seq(1, nrow(temp.hBECs), 2)])
-rownames(temp.hBECs)[seq(2, nrow(temp.hBECs), 2)] <- gsub("1$", "_var", rownames(temp.hBECs)[seq(2, nrow(temp.hBECs), 2)])
-temp.hBECs <- cbind(rownames(temp.hBECs), temp.hBECs)
-
-write_xlsx(temp.hBECs, "genes_mean_var.xlsx")
-
 # RSI bootstrap, only analyse genes with 0 rate = 0
 
 hBECs.bin30_mean.0rate <- calc.0_rate(list(infected = hBECs.bin30_mean_sd.mtx$mean))
@@ -194,9 +184,12 @@ RSI.RSIboot.FDR.tb <- rbind(cbind(cell = "hBECs", hBECs.bin30_mean.RSI.boot$infe
 RSI.RSIboot.FDR.gg <- RSI.RSIboot.FDR.tb %>%
   ggplot(aes(x = RSI, y = RSI.boot)) +
   facet_wrap(~cell %>% factor(levels = c("hBECs", "colon", "ileum"))) +
-  geom_point(aes(color = ifelse(p.adjust.survival < .05, "a", "b")), size = 1) +
+  geom_point(aes(color = ifelse(p.adjust.survival < .05, "a", "b"),
+                 shape = ifelse(p.adjust.survival < .05, "a", "b")),
+             size = .75, shape = 1, stroke = .08) +
   theme(legend.position = "none") +
   scale_color_manual(values = c("tomato", "grey60")) +
+  
   ylab("PSI") + labs(tag = "a")
 
 # plot GO
@@ -470,11 +463,39 @@ gg.fit.rank.hurst.significant <- plot.power_law(list(hBECs = hBECs.TL$log_log.me
 
 # save H values + power law figs
 
-rank.hurst.taylor.gg <- ggarrange(hurst.all_data.gg + labs(tag = "a"),
+rank.hurst.taylor.gg <- ggarrange(hurst.all_data.gg + labs(tag = "a") + ylab("distribution"),
                                   gg.fit.rank.hurst + labs(tag = "b"),
                                   ncol = 1)
 
 ggsave("figs_out/final/rank_hurst_taylor.pdf", rank.hurst.taylor.gg, width = 6.85, height = 5)
+
+# test if H is higher in any cell for all genes
+
+unpaired.wilcox.hurst.all.genes <- list(`hBECs vs colon` = wilcox.test(hBECs.hurst.rank[hBECs.hurst.rank$data == "infected",]$He,
+                                                                       colon.hurst.rank[colon.hurst.rank$data == "infected",]$He,
+                                                                       paired = FALSE),
+                                        `hBECs vs ileum` = wilcox.test(hBECs.hurst.rank[hBECs.hurst.rank$data == "infected",]$He,
+                                                                       ileum.hurst.rank[ileum.hurst.rank$data == "infected",]$He,
+                                                                       paired = FALSE),
+                                        `ileum vs colon` = wilcox.test(ileum.hurst.rank[ileum.hurst.rank$data == "infected",]$He,
+                                                                       colon.hurst.rank[colon.hurst.rank$data == "infected",]$He,
+                                                                       paired = FALSE))
+
+unpaired.wilcox.hurst.all.genes.p.adj <- unpaired.wilcox.hurst.all.genes %>% lapply(function(x) x$p.value) %>% unlist() %>% p.adjust(method = "fdr")
+
+# test if H is higher in any cell for significant H intersect genes
+
+paired.wilcox.hurst.significant.genes.intersect <- list(`hBECs vs colon` = wilcox.test(hurst.significant.genes.intersect.He$hBECs[sort(names(hurst.significant.genes.intersect.He$hBECs))],
+                                                                                       hurst.significant.genes.intersect.He$colon[sort(names(hurst.significant.genes.intersect.He$colon))],
+                                                                                       paired = TRUE),
+                                                        `hBECs vs ileum` = wilcox.test(hurst.significant.genes.intersect.He$hBECs[sort(names(hurst.significant.genes.intersect.He$hBECs))],
+                                                                                       hurst.significant.genes.intersect.He$ileum[sort(names(hurst.significant.genes.intersect.He$ileum))],
+                                                                                       paired = TRUE),
+                                                        `ileum vs colon` = wilcox.test(hurst.significant.genes.intersect.He$ileum[sort(names(hurst.significant.genes.intersect.He$ileum))],
+                                                                                       hurst.significant.genes.intersect.He$colon[sort(names(hurst.significant.genes.intersect.He$colon))],
+                                                                                       paired = TRUE))
+
+paired.wilcox.hurst.significant.genes.intersect.p.adj <- paired.wilcox.hurst.significant.genes.intersect %>% lapply(function(x) x$p.value) %>% unlist() %>% p.adjust(method = "fdr")
 
 # data structure figure, will be latter edited
 
@@ -535,121 +556,53 @@ ggsave("figs_out/final/data_structure.pdf", height = 8, width = 6.85)
 
 # network analyses
 
-#huri_egdes <- read.table("HuRI.tsv")
-#huri_egdes.symbol <- apply(huri_egdes, 2, function(x) {
-#  AnnotationDbi::select(org.Hs.eg.db, keys = x, columns = "SYMBOL", keytype = "ENSEMBL", multiVals = "first")$SYMBOL
-#})
-load("RData/HuRi_gene_names.Rdata")
-
-# test correlation of PSI and H with k and b
+huri_edges <- read.table("HuRI.tsv")
+huri <- graph_from_edgelist(huri_edges %>% as.matrix(), directed = FALSE)
 
 huri.k <- degree(huri)
 huri.b <- betweenness(huri, directed = FALSE)
-
-k.or.b(list(RSI.boot.intersect = RSI.boot.bin30_intersect,
-            hurst.intersect = hurst.significant.genes.intersect$gene %>% unique()),
-       huri)
-
-RSI.RSIboot.FDR.tb$k <- huri.k[match(rownames(RSI.RSIboot.FDR.tb), names(huri.k))]
-RSI.RSIboot.FDR.tb$b <- huri.b[match(rownames(RSI.RSIboot.FDR.tb), names(huri.b))]
-
-RSIboot.significant.k.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
-  lm(RSI.boot ~ k, RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5 & cell == x))
-})
-
-RSIboot.significant.b.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
-  lm(RSI.boot ~ b, RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5 & cell == x))
-})
-
-RSIboot.cor.k.gg <- RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5) %>%
-  ggplot(aes(RSI.boot, k, color = cell)) + geom_point() + geom_smooth(method = "lm")
-
-RSIboot.cor.b.gg <- RSI.RSIboot.FDR.tb %>% dplyr::filter(p.adjust.survival < .5) %>%
-  ggplot(aes(RSI.boot, b, color = cell)) + geom_point() + geom_smooth(method = "lm")
-
-hurst.infected.vs.simulated.tb$k <- huri.k[match(hurst.infected.vs.simulated.tb$gene, names(huri.k))]
-hurst.infected.vs.simulated.tb$b <- huri.b[match(hurst.infected.vs.simulated.tb$gene, names(huri.b))]
-
-hurst.significant.k.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
-  lm(infected ~ k, hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7 & cell == x))
-})
-
-hurst.significant.b.cor <- lapply(setNames(nm = c("hBECs", "colon", "ileum")), function(x) {
-  lm(infected ~ b, hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7 & cell == x))
-})
-
-hurst.cor.k.gg <- hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7) %>%
-  ggplot(aes(infected, k, color = cell)) + geom_point() + geom_smooth(method = "lm")
-
-hurst.cor.b.gg <- hurst.infected.vs.simulated.tb %>% dplyr::filter(infected >= .7 & simulated < .7) %>%
-  ggplot(aes(infected, b, color = cell)) + geom_point() + geom_smooth(method = "lm")
-
-# by GO category
-
-k.or.b_RSI.boot.bin30_intersect.GO <- apply(RSI.boot.bin30_intersect.GO, 1, function(x) {
-  
-  genes <- list()
-  genes[[x["Description"]]] <- x["geneID"] %>% strsplit("/") %>% unlist()
-
-  GO.res <- AnnotationDbi::select(org.Hs.eg.db, keys = c(x["ID"]), columns = c('SYMBOL'), keytype = "GOALL")
-  GO.genes <- unique(GO.res$SYMBOL)
-  
-  ALL.k.or.b <- k.or.b(genes, huri)
-  GO.k.or.b <- k.or.b(genes, huri, GO.genes)
-  
-  return(list(full = ALL.k.or.b,
-              GO = GO.k.or.b) %>%
-           bind_rows(.id = "background"))
-}) %>% bind_rows(.id = "GO")
-
-k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO", "k.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO",]$k.p.value)
-k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full", "k.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full",]$k.p.value)
-
-k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO", "b.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "GO",]$b.p.value)
-k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full", "b.adj.p"] <- p.adjust(k.or.b_RSI.boot.bin30_intersect.GO[k.or.b_RSI.boot.bin30_intersect.GO$background == "full",]$b.p.value)
-
-k.or.b_hurst.significant.genes.intersect.GO <- apply(hurst.significant.genes.intersect.GO, 1, function(x) {
-  
-  genes <- list()
-  genes[[x["Description"]]] <- x["geneID"] %>% strsplit("/") %>% unlist()
-  
-  GO.res <- AnnotationDbi::select(org.Hs.eg.db, keys = c(x["ID"]), columns = c('SYMBOL'), keytype = "GOALL")
-  GO.genes <- unique(GO.res$SYMBOL)
-  
-  ALL.k.or.b <- k.or.b(genes, huri)
-  GO.k.or.b <- k.or.b(genes, huri, GO.genes)
-  
-  return(list(full = ALL.k.or.b,
-              GO = GO.k.or.b) %>%
-           bind_rows(.id = "background"))
-}) %>% bind_rows(.id = "GO")
-
-k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO", "k.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO",]$k.p.value)
-k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full", "k.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full",]$k.p.value)
-
-k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO", "b.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "GO",]$b.p.value)
-k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full", "b.adj.p"] <- p.adjust(k.or.b_hurst.significant.genes.intersect.GO[k.or.b_hurst.significant.genes.intersect.GO$background == "full",]$b.p.value)
 
 # hubs based on 1.5xIQR rule and bottlenecks = articulation points
 
 huri.k.1.5_iqr <- IQR(huri.k) * 1.5
 huri.k.1.5_iqr.hubs <- huri.k[huri.k > huri.k.1.5_iqr]
 
-hurst.significant.genes.intersect.genes <- hurst.significant.genes.intersect$gene %>% unique()
+# convert symbol to ensembl
 
-RSI.boot.bin30_intersect.hubs <- huri.k.1.5_iqr.hubs[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.k.1.5_iqr.hubs)]]
-hurst.significant.genes.intersect.hubs <- huri.k.1.5_iqr.hubs[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.k.1.5_iqr.hubs)]]
+RSI.boot.bin30_intersect.ensembl <- AnnotationDbi::select(org.Hs.eg.db, keys = RSI.boot.bin30_intersect, columns = "ENSEMBL", keytype = "SYMBOL")
+
+hurst.significant.genes.intersect.genes <- hurst.significant.genes.intersect$gene %>% unique()
+hurst.significant.genes.intersect.ensembl <- AnnotationDbi::select(org.Hs.eg.db, keys = hurst.significant.genes.intersect.genes, columns = "ENSEMBL", keytype = "SYMBOL")
+
+# hubs
+
+RSI.boot.bin30_intersect.hubs <- huri.k.1.5_iqr.hubs[RSI.boot.bin30_intersect.ensembl$ENSEMBL[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(huri.k.1.5_iqr.hubs)]]
+RSI.boot.bin30_intersect.hubs.symbol <- RSI.boot.bin30_intersect.ensembl[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(RSI.boot.bin30_intersect.hubs),]$SYMBOL
+
+hurst.significant.genes.intersect.hubs <- huri.k.1.5_iqr.hubs[hurst.significant.genes.intersect.ensembl$ENSEMBL[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(huri.k.1.5_iqr.hubs)]]
+hurst.significant.genes.intersect.hubs.symbol <- hurst.significant.genes.intersect.ensembl[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(hurst.significant.genes.intersect.hubs),]$SYMBOL
+
+# articulation points
 
 huri.articulation_points <- articulation_points(huri) %>% as.list() %>% unlist()
 
-RSI.boot.bin30_intersect.ap <- huri.articulation_points[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.articulation_points)]]
-hurst.significant.genes.intersect.ap <- huri.articulation_points[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.articulation_points)]]
+RSI.boot.bin30_intersect.ap <- huri.articulation_points[RSI.boot.bin30_intersect.ensembl$ENSEMBL[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(huri.articulation_points)]]
+RSI.boot.bin30_intersect.ap.symbol <- RSI.boot.bin30_intersect.ensembl[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(RSI.boot.bin30_intersect.ap),]$SYMBOL
 
-huri.b.1.5_iqr <- IQR(huri.b) * 1.5
-huri.b.1.5_iqr.bns <- huri.b[huri.b > huri.b.1.5_iqr]
+hurst.significant.genes.intersect.ap <- huri.articulation_points[hurst.significant.genes.intersect.ensembl$ENSEMBL[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(huri.articulation_points)]]
+hurst.significant.genes.intersect.ap.symbol <- hurst.significant.genes.intersect.ensembl[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(hurst.significant.genes.intersect.ap),]$SYMBOL
 
-RSI.boot.bin30_intersect.bns <- huri.b.1.5_iqr.bns[RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% names(huri.b.1.5_iqr.bns)]]
-hurst.significant.genes.intersect.bns <- huri.b.1.5_iqr.bns[hurst.significant.genes.intersect.genes[hurst.significant.genes.intersect.genes %in% names(huri.b.1.5_iqr.bns)]]
+# save network results
+
+write_xlsx(list(hubs = AnnotationDbi::select(org.Hs.eg.db, keys = names(huri.k.1.5_iqr.hubs), columns = "SYMBOL", keytype = "ENSEMBL"),
+                `bottlenecks (ap)` = AnnotationDbi::select(org.Hs.eg.db, keys = names(huri.articulation_points), columns = "SYMBOL", keytype = "ENSEMBL"),
+                
+                `common punctual stab hubs` = RSI.boot.bin30_intersect.ensembl[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(RSI.boot.bin30_intersect.hubs),],
+                `common punctual stab ap` = RSI.boot.bin30_intersect.ensembl[RSI.boot.bin30_intersect.ensembl$ENSEMBL %in% names(RSI.boot.bin30_intersect.ap),],
+                
+                `common persistent rank hubs` = hurst.significant.genes.intersect.ensembl[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(hurst.significant.genes.intersect.hubs),],
+                `common persistent rank ap` = hurst.significant.genes.intersect.ensembl[hurst.significant.genes.intersect.ensembl$ENSEMBL %in% names(hurst.significant.genes.intersect.ap),]),
+           "Network_supplementary.xlsx")
 
 # genes not detected previously in the used datasets
 
@@ -689,3 +642,72 @@ ALL.hIECs.DE <- c(rownames(Colon_H_T.DE.ALL), rownames(Colon_H_T.DE.IE2), rownam
 intersect_genes_not_in_hIECs.ori <- hurst.RSI.intersect.significant[!hurst.RSI.intersect.significant %in% ALL.hIECs.DE]
 
 significant.genes.this.study <- intersect_genes_not_in_hBECs.ori[intersect_genes_not_in_hBECs.ori %in% intersect_genes_not_in_hIECs.ori]
+significant.genes.this.study.ensembl <- AnnotationDbi::select(org.Hs.eg.db, keys = significant.genes.this.study, columns = "ENSEMBL", keytype = "SYMBOL")
+
+significant.genes.this.study.hubs <- significant.genes.this.study.ensembl[significant.genes.this.study.ensembl$ENSEMBL %in% names(huri.k.1.5_iqr.hubs),]$SYMBOL
+significant.genes.this.study.ap <- significant.genes.this.study.ensembl[significant.genes.this.study.ensembl$ENSEMBL %in% names(huri.articulation_points),]$SYMBOL
+
+# save genes detected in this study and not on the original ones
+
+write_xlsx(list(`significant genes all cells` = significant.genes.this.study,
+                `hubs` = significant.genes.this.study.hubs,
+                `bottlenecks` = significant.genes.this.study.ap) %>% lapply(as.data.frame),
+           "Significant_genes_this_study_supplementary.xlsx", col_names = FALSE)
+
+# ICD based on 10.1080/2162402X.2015.1069938
+
+ICD.genes <- c("ENTPD1", "NT5E", "CALR", "HMGB1", "HSP90AA1",
+               "ATG5", "BAX", "CASP8", "PDIA3", "EIF2AK3", "PIK3CA",
+               "CXCR3", "IFNA1", "IFNB1", "IL10", "IL6", "TNF",
+               "CASP1", "IL1R1", "IL1B", "NLRP3", "P2RX7",
+               "LY96", "MYD88", "TLR4",
+               "CD4", "CD8A", "CD8B", "FOXP3",
+               "IFNG", "IFNGR1", "IL17A", "IL17RA", "PRF1")
+
+hurst.RSI.intersect.significant[hurst.RSI.intersect.significant %in% ICD.genes]
+RSI.boot.bin30_intersect[RSI.boot.bin30_intersect %in% ICD.genes]
+
+# apopotisis-related genes in the interactome
+
+RSI.boot.bin30_intersect.apoptosis <- RSI.boot.bin30_intersect.GO[grepl("apopto|p53", RSI.boot.bin30_intersect.GO$Description),]$geneID %>%
+  lapply(strsplit, "/") %>% unlist() %>% unique()
+
+hurst.significant.genes.intersect.apoptosis <- hurst.significant.genes.intersect.GO[grepl("apopto|p53", hurst.significant.genes.intersect.GO$Description),]$geneID %>%
+  lapply(strsplit, "/") %>% unlist() %>% unique()
+
+RSI.boot.bin30_intersect.apoptosis.ensembl <- AnnotationDbi::select(org.Hs.eg.db, keys = RSI.boot.bin30_intersect.apoptosis, columns = "ENSEMBL", keytype = "SYMBOL")
+RSI.boot.bin30_intersect.apoptosis.hubs <- RSI.boot.bin30_intersect.apoptosis.ensembl[RSI.boot.bin30_intersect.apoptosis.ensembl$ENSEMBL %in% names(huri.k.1.5_iqr.hubs),]$SYMBOL
+RSI.boot.bin30_intersect.apoptosis.ap <- RSI.boot.bin30_intersect.apoptosis.ensembl[RSI.boot.bin30_intersect.apoptosis.ensembl$ENSEMBL %in% names(huri.articulation_points),]$SYMBOL
+
+hurst.significant.genes.intersect.apoptosis.ensemble <-AnnotationDbi::select(org.Hs.eg.db, keys = hurst.significant.genes.intersect.apoptosis, columns = "ENSEMBL", keytype = "SYMBOL")
+hurst.significant.genes.intersect.apoptosis.hubs <- hurst.significant.genes.intersect.apoptosis.ensemble[hurst.significant.genes.intersect.apoptosis.ensemble$ENSEMBL %in% names(huri.k.1.5_iqr.hubs),]$SYMBOL
+hurst.significant.genes.intersect.apoptosis.ap <- hurst.significant.genes.intersect.apoptosis.ensemble[hurst.significant.genes.intersect.apoptosis.ensemble$ENSEMBL %in% names(huri.articulation_points),]$SYMBOL
+
+# interactions of bottlenecks
+
+RSI.boot.bin30_intersect.ap.interactions.GO <- setNames(nm = RSI.boot.bin30_intersect.ap.symbol) %>%
+  lapply(function(x) {
+    ens <- AnnotationDbi::select(org.Hs.eg.db, keys = x, columns = "ENSEMBL", keytype = "SYMBOL")$ENSEMBL
+    interactions.ens <- huri_edges[huri_edges$V1 %in% ens | huri_edges$V2 %in% ens,] %>% unlist() %>% unique()
+    interactions.ens <- interactions.ens[!interactions.ens %in% ens]
+    interactions.symbol <- AnnotationDbi::select(org.Hs.eg.db, keys = interactions.ens, columns = "SYMBOL", keytype = "ENSEMBL")$SYMBOL
+    GO <- enrichGO(interactions.symbol,
+                   org.Hs.eg.db, keyType = "SYMBOL",
+                   ont = "BP") %>% as.data.frame()
+    list(interactions = interactions.symbol,
+         GO = GO)
+  })
+
+hurst.significant.genes.intersect.ap.interactions.GO <- setNames(nm = hurst.significant.genes.intersect.ap.symbol) %>%
+  lapply(function(x) {
+    ens <- AnnotationDbi::select(org.Hs.eg.db, keys = x, columns = "ENSEMBL", keytype = "SYMBOL")$ENSEMBL
+    interactions.ens <- huri_edges[huri_edges$V1 %in% ens | huri_edges$V2 %in% ens,] %>% unlist() %>% unique()
+    interactions.ens <- interactions.ens[!interactions.ens %in% ens]
+    interactions.symbol <- AnnotationDbi::select(org.Hs.eg.db, keys = interactions.ens, columns = "SYMBOL", keytype = "ENSEMBL")$SYMBOL
+    GO <- enrichGO(interactions.symbol,
+                   org.Hs.eg.db, keyType = "SYMBOL",
+                   ont = "BP") %>% as.data.frame()
+    list(interactions = interactions.symbol,
+         GO = GO)
+  })
+
