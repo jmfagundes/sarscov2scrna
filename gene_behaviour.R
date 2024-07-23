@@ -58,5 +58,30 @@ gg.fit <- plot.power_law(list(hBECs = hBECs.TL$log_log.mean_sd$infected,
   scale_color_viridis() +
   xlab("mean (log)") + ylab("standard deviation (log)")
 
-ggsave("figs_out/final/RSI_regression.pdf", gg.fit, width = 6.85, height = 3)
+# plot some exponential and Poisson distribution genes
+
+# list genes close to a Poisson and exponential distributions based on segmented parameters
+# hBECs.TL$log_log.mean_sd$infected %>% dplyr::filter(sd > ((log(0.0160877044100371) + 0.48235 * mean) - .001) & sd < ((log(0.0160877044100371) + 0.48235 * mean) + .001))
+# hBECs.TL$log_log.mean_sd$infected %>% dplyr::filter(sd > ((log(0.25027374003788) + 0.85994 * mean) - .01) & sd < ((log(0.25027374003788) + 0.85994 * mean) + .01))
+
+# close to the breakpoint
+# hBECs.TL$log_log.mean_sd$infected %>% dplyr::filter(mean > (sd - .0001) & sd < (sd + .0001) & mean > (-7.26867352602054 - .01) & mean < (-7.26867352602054 + .01))
+
+exponential.vs.poisson <- hBECs.mtx$matrices$infected[c("RPL13A", "HSP90AB1", "ESD"),] %>% t()
+colnames(exponential.vs.poisson) <- c("RPL13A (exponential)", "HSP90AB1 (transition)", "ESD (Poisson)")
+
+exponential.vs.poisson <- exponential.vs.poisson %>% stack() %>% as.data.frame()
+colnames(exponential.vs.poisson) <- c("cell", "gene", "TPT count")
+
+exponential.vs.poisson.gg <- exponential.vs.poisson %>%
+  ggplot(aes(`TPT count`, fill = gene, color = gene)) +
+  geom_density() +
+  ylab("distribution") +
+  theme(legend.position = "none") +
+  facet_wrap(~gene %>% factor(levels = c("ESD (Poisson)", "HSP90AB1 (transition)", "RPL13A (exponential)")), scales = "free")
+
+TP.gg <- ggarrange(gg.fit + labs(tag = "a"),
+                   exponential.vs.poisson.gg + labs(tag = "b"), ncol = 1)
+
+ggsave("figs_out/final/RSI_regression.eps", device = "eps",  TP.gg, width = 6.85, height = 5)
 ggsave(paste0("figs_out/", out.dir, "RSI_regression_simplified.png"), gg.fit, width = 6.85, height = 3, dpi = 300)

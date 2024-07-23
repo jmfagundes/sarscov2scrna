@@ -97,7 +97,7 @@ rownames(ileum.random.mtx) <- rownames(ileum.rank$infected)
 
 # RSI boot random test
 
-hBECs.RSI.rand <- process.rank(matrices = list(rand = hBECs.random.mtx), method = "random") %>% calc.RSI(shuffle.rep = 1000)
+#hBECs.RSI.rand <- process.rank(matrices = list(rand = hBECs.random.mtx), method = "random") %>% calc.RSI(shuffle.rep = 1000)
 
 # also test RSI for uninfected cells as a null hypothesis
 
@@ -210,7 +210,7 @@ RSI.gg <- ggarrange(RSI.RSIboot.FDR.gg + theme(aspect.ratio = 1,
                     heights = c(1, 2.8),
                     ncol = 1)
 
-ggsave("figs_out/final/RSI_PSI_GO.pdf", RSI.gg, width = 6.85, height = 9)
+ggsave("figs_out/final/RSI_PSI_GO.eps", device = "eps",  RSI.gg, width = 6.85, height = 9)
 
 # save RSI and GO results
 
@@ -365,13 +365,23 @@ hurst.infected.vs.simulated.tb <- rbind(hBECs.hurst.rank %>% cbind(cell = "hBECs
                                         ileum.hurst.rank %>% cbind(cell = "ileum")) %>% filter(data %in% c("infected", "simulated")) %>%
   dplyr::select(-c(Hal, Ht, Hrs, Hs, `RSIboot FDR`)) %>% pivot_wider(names_from = data, values_from = He)
 
+hurst.infected.vs.simulated.tb$group <- NA
+hurst.infected.vs.simulated.tb[hurst.infected.vs.simulated.tb$infected < 0.5 | hurst.infected.vs.simulated.tb$simulated < 0.5, "group"] <- "anti-persistent"
+hurst.infected.vs.simulated.tb[hurst.infected.vs.simulated.tb$infected >= 0.5 & hurst.infected.vs.simulated.tb$infected < 0.7 |
+                                 hurst.infected.vs.simulated.tb$simulated >= 0.5 & hurst.infected.vs.simulated.tb$simulated < 0.7, "group"] <- "persistent"
+hurst.infected.vs.simulated.tb[hurst.infected.vs.simulated.tb$infected >= 0.7 | hurst.infected.vs.simulated.tb$simulated >= 0.7, "group"] <- "Hurst phenomenon"
+hurst.infected.vs.simulated.tb$group <- factor(hurst.infected.vs.simulated.tb$group, levels = c("anti-persistent", "persistent", "Hurst phenomenon"))
+
 hurst.infected.vs.simulated.gg <- hurst.infected.vs.simulated.tb %>%
-  ggplot(aes(x = infected, y = simulated)) + geom_point(size = 1) + facet_wrap(~factor(cell, level = c("hBECs", "colon", "ileum"))) +
+  ggplot(aes(x = infected, y = simulated, color = group)) + geom_point(size = 1) +
+  scale_color_manual(values = c("grey40", "grey60", "tomato")) +
+  facet_wrap(~factor(cell, level = c("hBECs", "colon", "ileum"))) +
   ylim(.25, 1) + xlim(.25, 1) +
-  geom_density_2d(linewidth = .25) +
-  geom_abline(intercept = 0, slope = 1, color = "red", linewidth = .25) +
-  geom_vline(xintercept = .7, linewidth = .25, color = "red", linetype = "dashed") +
-  geom_hline(yintercept = .7, linewidth = .25, color = "red", linetype = "dashed") +
+  geom_density_2d(color = "black", linewidth = .25) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", linewidth = .25) +
+  theme(legend.title = element_blank()) +
+#  geom_vline(xintercept = .7, linewidth = .25, color = "red", linetype = "dashed") +
+#  geom_hline(yintercept = .7, linewidth = .25, color = "red", linetype = "dashed") +
   labs(tag = "a")
 
 # select genes above a He threshold
@@ -412,7 +422,7 @@ hurst.gg <- ggarrange(hurst.infected.vs.simulated.gg + theme(aspect.ratio = 1,
                       heights = c(1, 2.8),
                       ncol = 1)
 
-ggsave("figs_out/final/hurst.pdf", hurst.gg, width = 6.85, height = 9)
+ggsave("figs_out/final/hurst.eps", device = "eps",  hurst.gg, width = 6.85, height = 9)
 
 # save Hurst and GO results
 
@@ -457,17 +467,35 @@ gg.fit.rank.hurst.significant <- plot.power_law(list(hBECs = hBECs.TL$log_log.me
                                                      colon = colon.hurst.rank %>% get.significant.H(),
                                                      ileum = ileum.hurst.rank %>% get.significant.H()), "Ha", NULL) +
   geom_abline(intercept = 0, slope = 1, color = "black", linewidth = .25) +
-  geom_abline(intercept = -4, slope = .5, color = "black", linewidth = .25, linetype = "dashed") +
+  geom_abline(intercept = -1.7, slope = .5, color = "black", linewidth = .25, linetype = "dashed") +
   xlab("mean (log)") + ylab("standard deviation (log)") + theme(legend.position = "none") +
   scale_color_manual(values = c("grey60", "tomato"))
+
+# mean vs H
+
+hurst.mean.vs.hurst.tb <- hurst.infected.vs.simulated.tb
+hurst.mean.vs.hurst.tb$`mean (log)` <- NA
+
+hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "hBECs", "mean (log)"] <- hBECs.TL$log_log.mean_sd$infected$mean[match(hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "hBECs",]$gene,
+                                                                                                                             rownames(hBECs.TL$log_log.mean_sd$infected))] %>% exp() %>% log10()
+hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "colon", "mean (log)"] <- colon.TL$log_log.mean_sd$infected$mean[match(hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "colon",]$gene,
+                                                                                                                             rownames(colon.TL$log_log.mean_sd$infected))] %>% exp() %>% log10()
+hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "ileum", "mean (log)"] <- ileum.TL$log_log.mean_sd$infected$mean[match(hurst.mean.vs.hurst.tb[hurst.mean.vs.hurst.tb$cell == "ileum",]$gene,
+                                                                                                                             rownames(ileum.TL$log_log.mean_sd$infected))] %>% exp() %>% log10()
+
+hurst.mean.vs.h.gg <- hurst.mean.vs.hurst.tb %>%
+  ggplot(aes(`mean (log)`, infected)) + geom_point() + facet_wrap(~cell) +
+  geom_hline(yintercept = .7, linewidth = .25, color = "red", linetype = "dashed") +
+  geom_hline(yintercept = .5, linewidth = .25, color = "red", linetype = "solid")
 
 # save H values + power law figs
 
 rank.hurst.taylor.gg <- ggarrange(hurst.all_data.gg + labs(tag = "a") + ylab("distribution"),
                                   gg.fit.rank.hurst + labs(tag = "b"),
+                                  hurst.mean.vs.h.gg + labs(tag = "c") + ylab("H"),
                                   ncol = 1)
 
-ggsave("figs_out/final/rank_hurst_taylor.pdf", rank.hurst.taylor.gg, width = 6.85, height = 5)
+ggsave("figs_out/final/rank_hurst_taylor.eps", device = "eps",  rank.hurst.taylor.gg, width = 6.85, height = 7.5)
 
 # test if H is higher in any cell for all genes
 
@@ -552,7 +580,7 @@ struc.c.d <- ggarrange(grid.arrange(tableGrob(hBECs.rank.small[c(1, 2, 5)], them
 
 struc.gg <- ggarrange(struc.a, struc.b, struc.c.d, ncol = 1, heights = c(1, 2, 1))
 
-ggsave("figs_out/final/data_structure.pdf", height = 8, width = 6.85)
+ggsave("figs_out/final/data_structure.eps", device = "eps",  height = 8, width = 6.85)
 
 # network analyses
 

@@ -242,20 +242,37 @@ beta2.pes <- effectsize::eta_squared(beta2.lm)
 
 breakpoint.sparsity.bin30.gg.tb <- breakpoint.sparsity.bin30.tb %>%
   dplyr::rename(`V[1]` = V1, `V[2]` = V2, `beta[1]` = beta1, `beta[2]` = beta2, `breakpoint~(log)` = breakpoint) %>%
-  dplyr::select(pseudotime_bin, `V[1]`, `V[2]`, `beta[1]`, `beta[2]`, `breakpoint~(log)`, cell) %>%
+  dplyr::select(pseudotime_bin, `V[1]`, `V[2]`, `beta[1]`, `beta[2]`, `breakpoint~(log)`, cell, sparsity) %>%
   pivot_longer(-c(pseudotime_bin, cell))
 
 breakpoint.sparsity.bin30.gg.tb$name <- factor(breakpoint.sparsity.bin30.gg.tb$name,
-                                               levels = c("breakpoint~(log)", "V[1]", "beta[1]", "V[2]", "beta[2]"))
+                                               levels = c("breakpoint~(log)", "V[1]", "beta[1]", "V[2]", "beta[2]", "sparsity"))
 
 npsi1.breakpoint.gg <- ggplot(breakpoint.sparsity.bin30.gg.tb, aes(pseudotime_bin, value, color = cell)) + geom_line() +
   facet_grid(rows = vars(name), scales = "free", switch = "y", labeller = label_parsed) + 
   theme(axis.title.y = element_blank(),
         strip.placement = "outside",
         strip.background = element_blank(),
-        strip.text = element_text(size = 12)) + xlab("pseudotime bin")
+        strip.text = element_text(size = 10)) + xlab("pseudotime bin")
 
-ggsave("figs_out/final/seg_params.pdf", npsi1.breakpoint.gg, width = 6.85, height = 7)
+# also plot a bin with visible triphasic behavior
+
+colon.bin30.no_filter <- pseudotime_bin(colon.mtx$matrices$infected, zero.rate.threshold = 1)
+colon.bin30.no_filter <- setNames(colon.bin30.no_filter$log_log.mean_sd, nm = 1:length(colon.bin30.no_filter$matrices)) %>% bind_rows(.id = "bin")
+
+triphasic.gg <- colon.bin30.no_filter %>% dplyr::filter(bin %in% c(1, 21)) %>%
+  ggplot(aes(x = log10(exp(mean)), y = log10(exp(sd)))) +
+  xlab("mean (log)") + ylab("standard deviation (log)") +
+  geom_point(size = .01) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linewidth = .25) + geom_abline(intercept = -1.7, slope = .5, color = "blue", linewidth = .25) +
+  facet_wrap(~bin, ncol = 5) + theme(legend.position = "none") +
+  theme(axis.title = element_text(size = 10))
+
+seg.gg <- ggarrange(triphasic.gg + labs(tag = "a"),
+                    npsi1.breakpoint.gg + labs(tag = "b"),
+                    ncol = 1, heights = c(.2, .8))
+
+ggsave("figs_out/final/seg_params.eps", device = "eps",  seg.gg, width = 6.85, height = 9.21)
 
 # save data
 
@@ -395,7 +412,7 @@ gg.umap <- ggarrange(hBECs.gg.umap + ggtitle("hBECs") + theme(axis.title = eleme
 
 gg.simulated <- ggarrange(gg.0_rate.per.bin, gg.umap, ncol = 1, heights = c(2, 1))
 
-ggsave("figs_out/final/simulated_dataset_properties.pdf", gg.simulated, width = 6.85, height = 7)
+ggsave("figs_out/final/simulated_dataset_properties.eps", device = "eps",  gg.simulated, width = 6.85, height = 7)
 
 # plot power laws for each pseudotime bin
 
@@ -575,11 +592,11 @@ pseudotime_bin30.TL_params$shape <- ifelse(paste0(pseudotime_bin30.TL_params$pse
 # plot pseudotime_bin30.TL_params or pseudotime_bin30.TL_params.unseg.seg
 
 bins.gg <- ggplot(pseudotime_bin30.TL_params %>%
-                    dplyr::select(c(pseudotime_bin, V, beta, cell, shape)) %>%
+                    dplyr::select(c(pseudotime_bin, V, beta, cell, shape, sparsity)) %>%
                     pivot_longer(-c(cell, pseudotime_bin, shape)),
                   aes(x = pseudotime_bin, y = value, color = cell)) +
   geom_point(aes(shape = shape), size = 1.2) + scale_shape_manual(values = c(18, NA)) + guides(shape = "none") +
-  facet_wrap(~name %>% factor(levels = c("V", "beta")), scales = "free", strip.position = "left", ncol = 1) +
+  facet_wrap(~name %>% factor(levels = c("V", "beta", "sparsity")), scales = "free", strip.position = "left", ncol = 1) +
   geom_path(linewidth = .25) +
   theme(axis.title = element_blank(),
         strip.placement = "outside",
@@ -601,14 +618,14 @@ bins.sim.gg <- ggplot(pseudotime_uninfected.sim.bin30.TL_params %>%
 
 all.bins.gg <- rbind(cbind(pseudotime_bin30.TL_params, data = "infected"),
       cbind(pseudotime_uninfected.sim.bin30.TL_params, shape = "b", data = "simulated")) %>% 
-  dplyr::select(c(pseudotime_bin, V, beta, cell, shape, data)) %>%
+  dplyr::select(c(pseudotime_bin, V, beta, cell, shape, data, sparsity)) %>%
   pivot_longer(-c(cell, pseudotime_bin, shape, data)) %>%
   ggplot(aes(x = pseudotime_bin, y = value, color = cell)) +
   geom_path(linewidth = .25) +
   geom_point(aes(shape = shape), size = 1.2) +
   scale_shape_manual(values = c(19, NA)) +
   guides(shape = "none") +
-  facet_grid(vars(name %>% factor(levels = c("V", "beta"))), vars(data), scales = "free", switch = "y",
+  facet_grid(vars(name %>% factor(levels = c("V", "beta", "sparsity"))), vars(data), scales = "free", switch = "y",
              labeller = label_parsed) +
   xlab("pseudotime bin") +
   theme(axis.title.y = element_blank(),
@@ -659,4 +676,4 @@ gg2 <- ggarrange(all.bins.gg,
                  selected.bins.gg,
                  ncol = 1, heights = c(.4, .6))
 
-ggsave("figs_out/final/selected_bins.pdf", gg2, width = 6.85, height = 9.21)
+ggsave("figs_out/final/selected_bins.eps", device = "eps",  gg2, width = 6.85, height = 9.21)
