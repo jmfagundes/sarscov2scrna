@@ -67,14 +67,16 @@ gg.fit <- plot.power_law(list(hBECs = hBECs.TL$log_log.mean_sd$infected,
 # close to the breakpoint
 # hBECs.TL$log_log.mean_sd$infected %>% dplyr::filter(mean > (sd - .0001) & sd < (sd + .0001) & mean > (-7.26867352602054 - .01) & mean < (-7.26867352602054 + .01))
 
-exponential.vs.poisson <- hBECs.mtx$matrices$infected[c("RPL13A", "HSP90AB1", "ESD"),] %>% t()
+hBECs.selected.genes <- hBECs.mtx$matrices$infected %>% normalize.cells()
+
+exponential.vs.poisson <- hBECs.selected.genes[c("RPL13A", "HSP90AB1", "ESD"),] %>% t()
 colnames(exponential.vs.poisson) <- c("RPL13A (exponential)", "HSP90AB1 (transition)", "ESD (Poisson)")
 
 exponential.vs.poisson <- exponential.vs.poisson %>% stack() %>% as.data.frame()
-colnames(exponential.vs.poisson) <- c("cell", "gene", "TPT count")
+colnames(exponential.vs.poisson) <- c("cell", "gene", "gene abundance")
 
 exponential.vs.poisson.gg <- exponential.vs.poisson %>%
-  ggplot(aes(`TPT count`, fill = gene, color = gene)) +
+  ggplot(aes(`gene abundance`, fill = gene, color = gene)) +
   geom_density() +
   ylab("distribution") +
   theme(legend.position = "none") +

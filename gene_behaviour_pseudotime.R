@@ -66,13 +66,13 @@ means.TL <- fit.TL(list(hBECs = hBECs.bin30_mean_sd.mtx$mean,
                         colon = colon.bin30_mean_sd.mtx$mean,
                         ileum = ileum.bin30_mean_sd.mtx$mean))
 
-plot.power_law(means.TL$log_log.mean_sd, list(hBECs = setNames(ifelse(hBECs.bin30_mean.RSI.boot$infected$p.adjust.survival < 0.05,
+plot.power_law(means.TL$log_log.mean_sd, list(hBECs = setNames(ifelse(hBECs.bin30_mean.RSI.boot$infected$p.adjust.survival < .05,
                                                                       "< 0.05", ">= 0.05"),
                                                                nm = hBECs.bin30_mean.RSI.boot$infected %>% rownames()),
-                                              colon = setNames(ifelse(colon.bin30_mean.RSI.boot$infected$p.adjust.survival < 0.05,
+                                              colon = setNames(ifelse(colon.bin30_mean.RSI.boot$infected$p.adjust.survival < .05,
                                                                       "< 0.05", ">= 0.05"),
                                                                nm = colon.bin30_mean.RSI.boot$infected %>% rownames()),
-                                              ileum = setNames(ifelse(ileum.bin30_mean.RSI.boot$infected$p.adjust.survival < 0.05,
+                                              ileum = setNames(ifelse(ileum.bin30_mean.RSI.boot$infected$p.adjust.survival < .05,
                                                                       "< 0.05", ">= 0.05"),
                                                                nm = ileum.bin30_mean.RSI.boot$infected %>% rownames())),
                "FDR", metadata.range = NULL) + theme(legend.position = "none") +
@@ -580,7 +580,7 @@ struc.c.d <- ggarrange(grid.arrange(tableGrob(hBECs.rank.small[c(1, 2, 5)], them
 
 struc.gg <- ggarrange(struc.a, struc.b, struc.c.d, ncol = 1, heights = c(1, 2, 1))
 
-ggsave("figs_out/final/data_structure.eps", device = "eps",  height = 8, width = 6.85)
+ggsave("figs_out/final/data_structure.eps", struc.gg, device = "eps",  height = 8, width = 6.85)
 
 # network analyses
 
